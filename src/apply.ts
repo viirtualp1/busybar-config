@@ -71,10 +71,20 @@ export function readConfig(app: ConfigurableApp): ConfigSnapshot {
   const sections: Record<string, SectionValues> = {};
 
   for (const section of app.spec.sections) {
-    sections[section.file] =
-      section.kind === 'env'
-        ? readEnvSection(app, section)
-        : readListSection(app, section);
+    if (section.kind !== 'env') {
+      sections[section.file] = readListSection(app, section);
+      continue;
+    }
+
+    // Several sections may describe the same file — an app with a dozen
+    // settings will group them under headings, and they all still live in one
+    // `.env`. The file is the unit of storage; a section is a heading over it.
+    // So the values are merged rather than replaced, which is what the old
+    // assignment did: every section but the last read back empty.
+    sections[section.file] = {
+      ...(asEnvValues(sections[section.file]) ?? {}),
+      ...readEnvSection(app, section),
+    };
   }
 
   return { sections };
@@ -82,30 +92,49 @@ export function readConfig(app: ConfigurableApp): ConfigSnapshot {
 
 export function writeConfig(app: ConfigurableApp, body: PutConfigBody): PutResult {
   mkdirSync(app.dir, { recursive: true });
-  const section = sectionOf(app.spec, body.section);
+  const sections = sectionsOf(app.spec, body.section);
+  const first = sections[0] as ConfigSection;
 
-  if (section.kind === 'env') {
+  if (first.kind === 'env') {
     if (!('values' in body)) {
-      throw new ConfigError('invalid', `${section.file} takes { values }`);
+      throw new ConfigError('invalid', `${first.file} takes { values }`);
     }
-    writeEnv(app, section, body.values);
+    // Every field the file declares, wherever it was grouped.
+    writeEnv(app, first.file, fieldsOf(sections), body.values);
   } else {
     if (!('entries' in body)) {
-      throw new ConfigError('invalid', `${section.file} takes { entries }`);
+      throw new ConfigError('invalid', `${first.file} takes { entries }`);
     }
-    writeList(app, section, body.entries, body.header);
+    writeList(app, first, body.entries, body.header);
   }
 
-  return { saved: true, restartRequired: (section.reloads ?? 'restart') === 'restart' };
+  // If any grouping over this file needs a restart, the file does.
+  return {
+    saved: true,
+    restartRequired: sections.some((one) => (one.reloads ?? 'restart') === 'restart'),
+  };
 }
 
 export function sectionOf(spec: AppConfigSpec, file: string): ConfigSection {
-  const section = spec.sections.find((one) => one.file === file);
-  if (!section) {
+  return sectionsOf(spec, file)[0] as ConfigSection;
+}
+
+/** Every section describing this file, in the order the app declared them. */
+export function sectionsOf(spec: AppConfigSpec, file: string): ConfigSection[] {
+  const sections = spec.sections.filter((one) => one.file === file);
+  if (sections.length === 0) {
     throw new ConfigError('not-found', `${spec.name} has no section ${file}`);
   }
 
-  return section;
+  return sections;
+}
+
+function fieldsOf(sections: ConfigSection[]): ConfigField[] {
+  return sections.flatMap((section) => section.fields);
+}
+
+function asEnvValues(values: SectionValues | undefined): EnvValues | null {
+  return values && !Array.isArray(values) && !('entries' in values) ? values : null;
 }
 
 // --- Reading -----------------------------------------------------------------
@@ -150,14 +179,15 @@ function describe(field: ConfigField, value: string): string | SecretView {
 
 function writeEnv(
   app: ConfigurableApp,
-  section: EnvSection,
+  name: string,
+  fields: ConfigField[],
   values: Record<string, FieldWrite>,
 ): void {
-  const path = join(app.dir, section.file);
+  const path = join(app.dir, name);
   let file = parseEnv(read(path) ?? '');
 
   for (const [key, incoming] of Object.entries(values)) {
-    const field = fieldOf(section.fields, key, section.file);
+    const field = fieldOf(fields, key, name);
     const current = readValue(file, key);
 
     if (incoming === null) {

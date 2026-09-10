@@ -211,3 +211,109 @@ test('the settings beside a list are read and written with it', () => {
     done();
   }
 });
+
+/**
+ * An app with more settings than fit under one heading groups them — and they
+ * all still live in one `.env`. The file is the unit of storage; a section is
+ * a heading over it.
+ */
+const GROUPED = defineConfigSpec({
+  name: 'grouped',
+  sections: [
+    {
+      kind: 'env',
+      file: '.env',
+      title: 'Connection',
+      reloads: 'restart',
+      fields: [{ key: 'HOST', label: 'Host', type: 'text' }],
+    },
+    {
+      kind: 'env',
+      file: '.env',
+      title: 'Display',
+      reloads: 'live',
+      fields: [
+        {
+          key: 'MAX_AVATARS',
+          label: 'How many',
+          type: 'number',
+          rules: [integerIn(1, 7)],
+        },
+        { key: 'GAIN', label: 'Gain', type: 'text' },
+      ],
+    },
+  ],
+});
+
+function grouped(): { app: ConfigurableApp; done: () => void } {
+  const dir = mkdtempSync(join(tmpdir(), 'busybar-grouped-'));
+
+  return {
+    app: { spec: GROUPED, packageName: 'busybar-grouped', dir },
+    done: () => rmSync(dir, { recursive: true, force: true }),
+  };
+}
+
+test('a setting from any heading can be saved, not just the first', () => {
+  const { app, done } = grouped();
+  try {
+    // The bug this replaces: the write resolved the file to the first section
+    // that named it, so anything grouped under a later heading came back as
+    // "no setting called MAX_AVATARS".
+    writeConfig(app, { section: '.env', values: { MAX_AVATARS: '3' } });
+
+    assert.match(readFileSync(join(app.dir, '.env'), 'utf8'), /MAX_AVATARS=3/);
+  } finally {
+    done();
+  }
+});
+
+test('settings from every heading are read back, not only the last', () => {
+  const { app, done } = grouped();
+  try {
+    writeFileSync(join(app.dir, '.env'), 'HOST=example\nMAX_AVATARS=4\nGAIN=1.2\n');
+    const env = readConfig(app).sections['.env'] as Record<string, unknown>;
+
+    assert.equal(env['HOST'], 'example', 'the first heading survived the second');
+    assert.equal(env['MAX_AVATARS'], '4');
+    assert.equal(env['GAIN'], '1.2');
+  } finally {
+    done();
+  }
+});
+
+test('a heading that reloads live does not excuse one that needs a restart', () => {
+  const { app, done } = grouped();
+  try {
+    const result = writeConfig(app, { section: '.env', values: { MAX_AVATARS: '3' } });
+
+    assert.equal(result.restartRequired, true, 'Connection still needs one');
+  } finally {
+    done();
+  }
+});
+
+test('a key no heading declares is still refused', () => {
+  const { app, done } = grouped();
+  try {
+    assert.throws(
+      () => writeConfig(app, { section: '.env', values: { NONSENSE: 'x' } }),
+      (error: unknown) =>
+        error instanceof ConfigError && /no setting called NONSENSE/.test(error.message),
+    );
+  } finally {
+    done();
+  }
+});
+
+test('the rules of the heading a field belongs to still apply', () => {
+  const { app, done } = grouped();
+  try {
+    assert.throws(
+      () => writeConfig(app, { section: '.env', values: { MAX_AVATARS: '99' } }),
+      (error: unknown) => error instanceof ConfigError && error.kind === 'invalid',
+    );
+  } finally {
+    done();
+  }
+});

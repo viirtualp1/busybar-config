@@ -1,6 +1,6 @@
 {
   "name": "busybar-config",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "An interactive editor for the settings of every BUSY Bar app in a profile",
   "author": "viirtualp1",
   "license": "MIT",
@@ -36,6 +36,7 @@
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "npm run clean && tsc -p tsconfig.build.json && busybar-fix-esm",
+    "prepack": "npm run build",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
