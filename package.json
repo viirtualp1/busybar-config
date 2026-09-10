@@ -1,6 +1,6 @@
 {
   "name": "busybar-config",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "An interactive editor for the settings of every BUSY Bar app in a profile",
   "author": "viirtualp1",
   "license": "MIT",
@@ -49,7 +49,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.8.0",
-    "busybar-kit": "^1.1.0"
+    "busybar-kit": "^2.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

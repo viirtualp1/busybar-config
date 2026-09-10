@@ -7,7 +7,7 @@ const FLIGHTS: ListSection = {
   kind: 'list',
   file: 'flights.json',
   title: 'Trips',
-  summary: (entry) => entry.number ?? '',
+  summary: '{number}',
   fields: [],
 };
 

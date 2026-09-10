@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
 import type { ConfigField } from 'busybar-kit/config-spec';
+import { validateValue } from 'busybar-kit/rules';
 
 /** What the user typed, or nothing when they backed out. */
 export type Answer = { value: string } | { cancelled: true };
@@ -79,13 +80,9 @@ function validateWith(
   value: string,
   current: string,
 ): string | undefined {
-  const trimmed = value.trim();
-  // A secret that is already there does not have to be typed again.
-  if (field.required && !trimmed && !(field.type === 'secret' && current)) {
-    return `${field.label} is needed`;
-  }
-
-  return field.validate?.(trimmed);
+  // One interpreter, shared with the daemon and the browser, so a value the
+  // CLI accepts is a value they accept.
+  return validateValue(field.rules, value, field, current);
 }
 
 export function truthy(value: string): boolean {

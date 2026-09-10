@@ -8,6 +8,7 @@ import type {
   ListSection,
 } from 'busybar-kit/config-spec';
 import type { ConfigurableApp } from './discover.js';
+import { renderSummary } from 'busybar-kit/summary';
 import { askField, cancelled, describe } from './prompt.js';
 import { parseEnv, readValue, serialise, setValue } from './store/env.js';
 import { parseList, readHeader, serialiseList, writeHeader } from './store/list.js';
@@ -87,7 +88,7 @@ async function editList(app: ConfigurableApp, section: ListSection): Promise<boo
     options: [
       ...entries.map((entry, at) => ({
         value: String(at),
-        label: section.summary(entry) || `entry ${at + 1}`,
+        label: renderSummary(section.summary, entry) || `entry ${at + 1}`,
       })),
       { value: 'add', label: '+ add a new one' },
       ...(section.header?.length
@@ -120,7 +121,7 @@ async function editList(app: ConfigurableApp, section: ListSection): Promise<boo
     if (entry) {
       entries.push(entry);
       write(path, serialiseList(file, entries, section));
-      p.log.success(`Added ${section.summary(entry)}`);
+      p.log.success(`Added ${renderSummary(section.summary, entry)}`);
     }
 
     return editList(app, section);
@@ -133,7 +134,7 @@ async function editList(app: ConfigurableApp, section: ListSection): Promise<boo
   }
 
   const what = await p.select({
-    message: section.summary(existing),
+    message: renderSummary(section.summary, existing),
     options: [
       { value: 'edit', label: 'Change it' },
       { value: 'remove', label: 'Remove it' },
@@ -146,7 +147,9 @@ async function editList(app: ConfigurableApp, section: ListSection): Promise<boo
   }
 
   if (what === 'remove') {
-    const sure = await p.confirm({ message: `Remove ${section.summary(existing)}?` });
+    const sure = await p.confirm({
+      message: `Remove ${renderSummary(section.summary, existing)}?`,
+    });
     if (!p.isCancel(sure) && sure) {
       entries.splice(at, 1);
       write(path, serialiseList(file, entries, section));
